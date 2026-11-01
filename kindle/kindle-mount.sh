@@ -40,8 +40,9 @@ Mount a USB-connected Kindle and print its mountpoint.
 
 Options:
   -m, --mountpoint DIR   Mount here instead of the default
-                         (mass storage: /media/\$USER/<label>, via udisks;
-                          MTP: \$XDG_RUNTIME_DIR/kindle)
+                         (mass storage: wherever udisks puts it, usually
+                          /run/media/\$USER/<label>, or /media/\$USER/<label>
+                          when mount(8) is used; MTP: \$XDG_RUNTIME_DIR/kindle)
   -t, --type KIND        auto (default), ums (mass storage) or mtp
   -l, --label LABEL      Filesystem label to look for (default: $KINDLE_LABEL)
   -o, --options OPTS     Extra mount options, mass storage only

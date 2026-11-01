@@ -45,10 +45,11 @@ Useful options:
 ```
 
 A mass-storage Kindle is mounted through `udisksctl` when possible, so no root
-is needed and it lands under `/media/$USER/Kindle`. Giving `-m` switches to
-`mount(8)`, which needs `sudo`. An MTP Kindle is mounted with `jmtpfs`,
-`simple-mtpfs` or `go-mtpfs` under `$XDG_RUNTIME_DIR/kindle`; if the desktop
-already mounted it through gvfs, that path is reported instead.
+is needed; udisks picks the path, usually `/run/media/$USER/Kindle`, and the
+script reports whichever it chose. Giving `-m` switches to `mount(8)`, which
+needs `sudo` and defaults to `/media/$USER/<label>`. An MTP Kindle is mounted
+with `jmtpfs`, `simple-mtpfs` or `go-mtpfs` under `$XDG_RUNTIME_DIR/kindle`; if
+the desktop already mounted it through gvfs, that path is reported instead.
 
 ### Unmount
 
