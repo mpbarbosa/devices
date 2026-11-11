@@ -181,10 +181,11 @@ and on this laptop there were two separate reasons for it:
 
 1. **Nothing was listening.** `aconnect -l` showed the MPD218 with no
    `Connecting To:` line, and no softsynth was installed.
-2. **The notes were inaudible.** Bank A on the presets this unit shipped with
-   sends notes 0-15 (C-1 to D#0) on channel 1 -- below most instrument ranges
-   and at the bottom edge of hearing. A conventional MPC mapping starts at note
-   36 (C2).
+2. **The notes were inaudible.** The presets this unit shipped with run notes
+   0-47 on channel 1, so bank A is 0-15 (C-1 to D#0) -- below most instrument
+   ranges and at the bottom edge of hearing. Banks B and C climb into audible
+   territory, but a conventional MPC mapping starts bank A at note 36 (C2),
+   which is what `--transpose 36` restores.
 
 `mpd218-synth.sh` handles both. It starts FluidSynth and connects the
 controller to it, and where the notes are out of range it can shift them with
@@ -235,12 +236,17 @@ model -- so a blind shift would break whichever presets are already in range:
 
 | Preset on the device | Pads send | Transpose needed |
 | --- | --- | --- |
-| `chroma10` (`windows/mpd218/first_preset.mpd218`) | notes 36-51, channel 10 | none; channel 10 is the GM drum map, so it is a kit |
-| the VirtualDJ presets in `backup-2026-11-10/` | notes 0-15, channel 1 | `--transpose 36`, which moves bank A to C2..D#3 |
+| `chroma10` (`windows/mpd218/first_preset.mpd218`) | notes 36-83, channel 10 | none; channel 10 is the GM drum map, so it is a kit |
+| the VirtualDJ presets in `backup-2026-11-10/` | notes 0-47, channel 1 | `--transpose 36`, which lifts the preset to 36-83 and bank A to C2..D#3 |
 
-So if the pads are silent, pass `--transpose 36`. The audio driver is tried in
-the order `pipewire`, `pulseaudio`, `alsa`; pin one with `--audio` if the guess
-is wrong.
+A preset covers all 48 pads -- 16 pads across banks A, B and C as one chromatic
+run -- so these ranges are three banks wide, not one: `chroma10` puts bank A at
+36-51, B at 52-67 and C at 68-83. Only its last two pads land above the GM
+percussion map, which ends at 81, and so stay silent on a drum kit.
+
+So if the pads are silent, pass `--transpose 36`. If nothing is audible at all,
+the audio driver is the thing to change rather than the transpose -- see the
+note on `--audio` above.
 
 The shift lives in the synth rather than in a preset deliberately: writing a
 preset would replace a slot on the device, and in the VirtualDJ mapping the note
@@ -265,9 +271,9 @@ effects takes `-WhatIf`, which is the `-n` of the bash half.
 
 ### MPD218
 
-`first_preset.mpd218` is the pad preset: pads 1-16 on notes 36-51, MIDI
-channel 10. It is a sysex dump, kept `binary` in `.gitattributes` so git never
-rewrites the bytes.
+`first_preset.mpd218` is the pad preset: all 48 pads on notes 36-83, MIDI
+channel 10 -- banks A, B and C at 36-51, 52-67 and 68-83. It is a sysex dump,
+kept `binary` in `.gitattributes` so git never rewrites the bytes.
 
 ```powershell
 .\windows\mpd218\midimon.ps1                    # 30 s, first MPD218 port

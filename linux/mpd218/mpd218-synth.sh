@@ -6,13 +6,17 @@
 # something is listening, which is what this script arranges.
 #
 # It can also work around the note range, which differs per preset on this
-# unit. The VirtualDJ presets send bank A on notes 0-15 (C-1 to D#0), below
-# most instrument ranges and at the bottom edge of hearing, so those pads are
-# effectively silent even once a synth is connected; the chroma10 preset sends
-# notes 36-51 on channel 10 and is audible as a GM drum kit as it is. The
-# device gives no way to ask which preset is selected - sysex index 0x00 is not
-# "current preset" on the MPD218 - so nothing is transposed by default and
-# --transpose is there for when the pads turn out to be silent.
+# unit. A preset covers all 48 pads - 16 pads across banks A, B and C - as one
+# chromatic run, so its range is three banks wide and not the one bank a pad
+# layout suggests. The VirtualDJ presets run notes 0-47 on channel 1, bank A
+# being 0-15 (C-1 to D#0), below most instrument ranges and at the bottom edge
+# of hearing, so that bank is effectively silent even once a synth is
+# connected; the chroma10 preset runs notes 36-83 on channel 10 and is audible
+# as a GM drum kit as it is, bar the top two pads of bank C - the GM percussion
+# map ends at 81. The device gives no way to ask which preset is selected -
+# sysex index 0x00 is not "current preset" on the MPD218 - so nothing is
+# transposed by default and --transpose is there for when the pads turn out to
+# be silent.
 #
 # FluidSynth is left in the foreground deliberately. Given -i (no shell) and no
 # MIDI file it has nothing to do and exits at once, so it is its own command
@@ -78,10 +82,12 @@ Options:
 
 When to use --transpose:
   Nothing is shifted by default, because which preset is selected cannot be
-  read back from the device. The chroma10 preset (notes 36-51, channel 10) is
-  audible as a GM drum kit as it is. The VirtualDJ presets put bank A on notes
-  0-15, which is inaudible -- pass --transpose 36 for those, which moves bank
-  A to C2..D#3.
+  read back from the device. A preset spans all 48 pads (16 across banks A, B
+  and C), so its range is three banks wide. The chroma10 preset (notes 36-83,
+  channel 10) is audible as a GM drum kit as it is, bar the top two pads, which
+  sit above the GM percussion map. The VirtualDJ presets run notes 0-47 on
+  channel 1, bank A at 0-15 where it is inaudible -- pass --transpose 36 for
+  those, which lifts the preset to 36-83 and bank A to C2..D#3.
 
 Environment:
   MPD218_TRANSPOSE, MPD218_GAIN, MPD218_SOUNDFONT, MPD218_AUDIO_DRIVER

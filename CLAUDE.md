@@ -15,7 +15,8 @@ scripts and device data, one directory per device, plus host-level
 configuration that has no device of its own:
 
 - `windows/mpd218/first_preset.mpd218` — the Akai MPD218 controller preset
-  (pads 1-16 on notes 36-51, MIDI channel 10), a sysex dump kept `binary`.
+  (all 48 pads on notes 36-83, MIDI channel 10; banks A, B and C at 36-51,
+  52-67 and 68-83), a sysex dump kept `binary`.
 - `windows/mpd218/midimon.ps1` — prints what the controller actually sends.
 - `windows/clock/fix-clock-utc.ps1` — stops the clock booting three hours fast
   when the host dual-boots Linux, which keeps the RTC in UTC.
