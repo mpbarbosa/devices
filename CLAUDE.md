@@ -10,10 +10,20 @@ required (enforced at the top of `linux/lib/common.sh`) because the code relies
 on `declare -gA`, `${var,,}` and `mapfile`.
 
 The tree is split by **host platform**: `linux/` holds the bash suite described
-below, and `windows/` holds per-device material for Windows hosts — currently
-`windows/mpd218/first_preset.mpd218`, the Akai MPD218 controller preset (pads
-1-16 on notes 36-51, MIDI channel 10). Everything in this file concerns
-`linux/` unless stated otherwise.
+below, and `windows/` holds material for Windows hosts — PowerShell 5.1
+scripts and device data, one directory per device, plus host-level
+configuration that has no device of its own:
+
+- `windows/mpd218/first_preset.mpd218` — the Akai MPD218 controller preset
+  (pads 1-16 on notes 36-51, MIDI channel 10), a sysex dump kept `binary`.
+- `windows/mpd218/midimon.ps1` — prints what the controller actually sends.
+- `windows/clock/fix-clock-utc.ps1` — stops the clock booting three hours fast
+  when the host dual-boots Linux, which keeps the RTC in UTC.
+
+The PowerShell scripts follow the same discipline as the bash suite: a
+comment-based help block, `-WhatIf` wherever bash would offer `-n`, and no
+silent side effects. Everything else in this file concerns `linux/` unless
+stated otherwise.
 
 ## Commands
 

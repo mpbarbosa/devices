@@ -7,3 +7,8 @@
 # Device material that is not text. Akai MPD218 controller presets are sysex
 # dumps; never let git touch the bytes.
 *.mpd218 binary
+
+# PowerShell is the Windows half of the suite. core.autocrlf already does this
+# on a Windows checkout, but pin it so a clone made with autocrlf off still
+# gets the CRLF that Windows tooling expects.
+*.ps1 text eol=crlf
