@@ -14,6 +14,7 @@ linux/kindle/kindle-mount.sh        mount a Kindle, print its mountpoint
 linux/kindle/kindle-unmount.sh      flush and unmount a Kindle, optionally power it off
 linux/mpd218/mpd218-config.sh       read, edit and write MPD218 presets over SysEx
 linux/mpd218/mpd218-synth.sh        route the MPD218 into FluidSynth so it is audible
+linux/mpd218/mpd218-drums.sh        put a classic drum kit on the pads, and play it
 windows/mpd218/first_preset.mpd218  Akai MPD218 pad preset, a sysex dump
 windows/mpd218/midimon.ps1          print what a MIDI controller is actually sending
 windows/clock/fix-clock-utc.ps1     stop the clock booting three hours fast
@@ -153,6 +154,58 @@ for f in linux/mpd218/backup-2026-11-10/preset_*.mpd218; do
     ./linux/mpd218/mpd218-config.sh write "$f"; sleep 1
 done
 ```
+
+### A classic drum kit
+
+The presets this unit carries are no use for drumming. The VirtualDJ ones send
+bank A on notes 0-15, and `chroma10` is chromatic over notes 36-83, which walks
+the General MIDI percussion map in numerical order rather than musical order --
+kick, side stick, snare, clap, snare, tom. Playable, but nothing lands where a
+drummer's hands expect it.
+
+```bash
+./linux/mpd218/mpd218-drums.sh map      # see the layout, change nothing
+./linux/mpd218/mpd218-drums.sh apply    # write it to preset 1
+./linux/mpd218/mpd218-drums.sh play     # write it, then start the synth
+```
+
+Bank A is the kit, with the groove on the bottom row:
+
+```
+  13  49 Crash 1       14  51 Ride 1       15  53 Ride Bell    16  56 Cowbell
+   9  41 Low Floor Tom 10  45 Low Tom      11  47 Mid Tom       12  50 High Tom
+   5  37 Side Stick     6  39 Hand Clap     7  44 Pedal Hat      8  54 Tambourine
+   1  36 Bass Drum      2  38 Snare         3  42 Closed Hat     4  46 Open Hat
+```
+
+Bank B holds the second kit voices and the hand percussion, bank C the rest of
+the map. A and B together cover notes 35-66 exactly and C covers 67-81, so the
+three banks between them reach every one of the 47 GM percussion sounds, with
+one pad spare -- spent on a second kick, so a beat is always within reach. The
+six dials send the CCs a GM synth actually responds to while a kit is playing
+(volume, pan, reverb, chorus, cutoff, resonance), with bank 3 left on CC 20-25,
+which GM assigns to nothing.
+
+Everything is on MIDI channel 10, which General MIDI reserves for percussion,
+so any GM synth plays it as a kit with no program change. That also means
+`mpd218-synth.sh` needs no `--transpose`.
+
+The preset is generated rather than edited: `mpd218.py`'s pad editor is
+interactive, 48 pads of prompts, and this layout should be reproducible. The
+549-byte dump is emitted byte by byte, which is also why there is no
+`.mpd218` file for it in the repository -- the script is the source. Pad 1 is
+assumed to be bottom-left, counting up in rows, as on an MPC; the device cannot
+be asked. If the kit comes out upside down, that assumption is why:
+
+```bash
+aseqdump -p "$(./linux/mpd218/mpd218-config.sh seq)"
+# hit the bottom-left pad; expect note 36 on channel 9 (aseqdump counts from 0)
+```
+
+`apply` replaces whatever is in that slot, and the device offers no undo, so
+keep what is there first with `mpd218-config.sh read N old.mpd218`. What was in
+slot 1 is `windows/mpd218/first_preset.mpd218`, and the factory set is in
+`backup-2026-11-10/`.
 
 ### Device facts worth knowing
 

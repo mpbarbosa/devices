@@ -86,8 +86,16 @@ Three layers, each entry script being a thin argument parser over the libraries:
 - `linux/lib/mpd218.sh` — all MPD218 knowledge. Detects the device in two
   namespaces: the raw ALSA port (`hw:1,0,0`, what `amidi` needs for sysex) and
   the sequencer address (`20:0`, what `aconnect` needs). Pure detection.
-- `linux/mpd218/mpd218-config.sh`, `linux/mpd218/mpd218-synth.sh` — preset
-  transfer, and routing the controller into FluidSynth so it is audible.
+- `linux/mpd218/mpd218-config.sh`, `linux/mpd218/mpd218-synth.sh`,
+  `linux/mpd218/mpd218-drums.sh` — preset transfer, routing the controller into
+  FluidSynth so it is audible, and a generated General MIDI drum kit.
+  `mpd218-drums.sh` is the one script that writes a preset from scratch rather
+  than moving one around, so it carries the 549-byte dump layout in its header
+  comment: 7 header bytes, slot, 8-byte name, 14-bit tempo stuffed into two
+  7-bit bytes, division, swing, 48 pads × 8 bytes, 18 dials × 8 bytes, `F7`.
+  Every byte after the header must be ≤ `0x7F` or it is not legal SysEx. The
+  check to run after touching it is a `construct` round-trip (parse and re-emit
+  byte-identically) plus a read-back from the device.
 
 `$ROOT_DIR` resolves to `linux/`, not the repository root, so the in-script
 `# shellcheck source=lib/...` directives stay relative to `linux/` and need no
