@@ -1,18 +1,26 @@
 # devices
 
-A shell script suite to setup, mount and unmount devices connected to Linux.
+Scripts for the devices I plug into this machine: a bash suite that sets up,
+mounts and unmounts devices connected to Linux, plus the Windows-side material
+for the same hardware on the same laptop booted the other way.
+
+The tree is split by host platform, not by device:
 
 ```
-lib/common.sh            logging, dry-run, privilege escalation, mount-table helpers
-lib/kindle.sh            Kindle detection (USB mass storage and MTP)
-kindle/kindle-mount.sh   mount a Kindle, print its mountpoint
-kindle/kindle-unmount.sh flush and unmount a Kindle, optionally power it off
+linux/lib/common.sh                 logging, dry-run, privilege escalation, mount-table helpers
+linux/lib/kindle.sh                 Kindle detection (USB mass storage and MTP)
+linux/kindle/kindle-mount.sh        mount a Kindle, print its mountpoint
+linux/kindle/kindle-unmount.sh      flush and unmount a Kindle, optionally power it off
+windows/mpd218/first_preset.mpd218  Akai MPD218 pad preset, a sysex dump
+windows/mpd218/midimon.ps1          print what a MIDI controller is actually sending
+windows/clock/fix-clock-utc.ps1     stop the clock booting three hours fast
 ```
 
-Requires bash 4.2 or newer. `udisksctl`, `gio`, `fusermount3` and an MTP helper
-are used when present, never required.
+`linux/` needs bash 4.2 or newer; `udisksctl`, `gio`, `fusermount3` and an MTP
+helper are used when present, never required. `windows/` needs PowerShell 5.1,
+which ships with Windows.
 
-## Kindle
+## Kindle (Linux)
 
 Kindles come in two flavours and the scripts handle both:
 
@@ -24,24 +32,25 @@ Kindles come in two flavours and the scripts handle both:
 ### Mount
 
 ```bash
-./kindle/kindle-mount.sh
+./linux/kindle/kindle-mount.sh
 ```
 
 The mountpoint is printed on stdout and everything else goes to stderr, so it
 composes:
 
 ```bash
-cp book.epub "$(./kindle/kindle-mount.sh -q)/documents/"
+cp book.epub "$(./linux/kindle/kindle-mount.sh -q)/documents/"
 ```
 
 Useful options:
 
 ```bash
-./kindle/kindle-mount.sh -w 30            # plug the cable in, then wait for it
-./kindle/kindle-mount.sh -m ~/mnt/kindle  # mount at a fixed path
-./kindle/kindle-mount.sh -r               # read-only
-./kindle/kindle-mount.sh -M               # load usb-storage first, if needed
-./kindle/kindle-mount.sh -n               # dry run, change nothing
+./linux/kindle/kindle-mount.sh -w 30            # plug the cable in, then wait for it
+./linux/kindle/kindle-mount.sh -m ~/mnt/kindle  # mount at a fixed path
+./linux/kindle/kindle-mount.sh -r               # read-only
+./linux/kindle/kindle-mount.sh -t mtp           # skip detection, force a flavour
+./linux/kindle/kindle-mount.sh -M               # load usb-storage first, if needed
+./linux/kindle/kindle-mount.sh -n               # dry run, change nothing
 ```
 
 A mass-storage Kindle is mounted through `udisksctl` when possible, so no root
@@ -54,10 +63,10 @@ the desktop already mounted it through gvfs, that path is reported instead.
 ### Unmount
 
 ```bash
-./kindle/kindle-unmount.sh        # find it and unmount it
-./kindle/kindle-unmount.sh -e     # unmount, power the USB disk off, ready to unplug
-./kindle/kindle-unmount.sh -a     # unmount every Kindle mount found
-./kindle/kindle-unmount.sh -f     # lazy unmount as a last resort when busy
+./linux/kindle/kindle-unmount.sh        # find it and unmount it
+./linux/kindle/kindle-unmount.sh -e     # unmount, power the USB disk off, ready to unplug
+./linux/kindle/kindle-unmount.sh -a     # unmount every Kindle mount found
+./linux/kindle/kindle-unmount.sh -f     # lazy unmount as a last resort when busy
 ```
 
 Always syncs before unmounting. When something still has files open, the
@@ -96,3 +105,52 @@ echo usb-storage | sudo tee /etc/modules-load.d/usb-storage.conf
 
 `KINDLE_MOUNTPOINT`, `KINDLE_LABEL`, `KINDLE_MOUNT_OPTIONS`, `NO_COLOR`,
 `DEVICES_DEBUG=1` for the commands being run.
+
+## Windows
+
+PowerShell 5.1, one directory per device plus host configuration that belongs
+to no device. Each script carries a `-?` help block, and anything with side
+effects takes `-WhatIf`, which is the `-n` of the bash half.
+
+### MPD218
+
+`first_preset.mpd218` is the pad preset: pads 1-16 on notes 36-51, MIDI
+channel 10. It is a sysex dump, kept `binary` in `.gitattributes` so git never
+rewrites the bytes.
+
+```powershell
+.\windows\mpd218\midimon.ps1                    # 30 s, first MPD218 port
+.\windows\mpd218\midimon.ps1 -Seconds 60 -Show 100
+.\windows\mpd218\midimon.ps1 -Device 'nanoKEY2'
+```
+
+`midimon.ps1` opens the MIDI input port through winmm and logs what arrives,
+independently of any DAW — which is how to tell what the hardware transmits
+from what an editor claims it transmits. The two usually disagree: the editor's
+`File > Save` writes a file and nothing else, so a preset only reaches the pads
+through `File > Send To Hardware`, and the unit's PAD BANK button then shifts
+the whole range anyway (bank C sends 68-83). Because opening the port only
+succeeds when nothing else holds it, a `MMSYSERR_ALLOCATED` failure is itself
+the answer when a DAW has grabbed the device.
+
+### Clock
+
+```powershell
+.\windows\clock\fix-clock-utc.ps1 -WhatIf   # show every change, make none
+.\windows\clock\fix-clock-utc.ps1           # elevated shell required
+```
+
+On a machine that dual-boots, Linux keeps the real-time clock in UTC, the
+systemd default, while Windows assumes it holds local time. Windows therefore
+reads the UTC hour off the hardware and believes it is local, so the clock boots
+exactly three hours fast here and the desktop shows UTC.
+
+The script sets `RealTimeIsUniversal` so Windows agrees with Linux about what
+the RTC means, and repairs `w32time`, which ships pointed at `time.windows.com`
+alone with a 4.5 hour poll interval: it adds NTP.br stratum 1 and polls hourly.
+The opposite fix, `timedatectl set-local-rtc 1` on the Linux side, is
+deliberately not used — a local-time RTC has no way to express a DST change.
+
+A Windows feature update can reset `RealTimeIsUniversal`. If the clock is ever
+exactly three hours fast again, check that value before suspecting the timezone,
+which was never wrong.
