@@ -1,0 +1,9 @@
+# The suite is bash run on Linux hosts, but is edited from Windows, where
+# core.autocrlf would otherwise rewrite the working copy to CRLF. A carriage
+# return in the shebang makes the kernel look for an interpreter named
+# "bash\r", so these must stay LF on every platform.
+*.sh text eol=lf
+
+# Device material that is not text. Akai MPD218 controller presets are sysex
+# dumps; never let git touch the bytes.
+*.mpd218 binary

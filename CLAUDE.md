@@ -6,16 +6,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A suite of POSIX-host bash scripts that set up, mount and unmount devices
 attached to Linux. No build system, no package manifest, no CI. Bash 4.2+ is
-required (enforced at the top of `lib/common.sh`) because the code relies on
-`declare -gA`, `${var,,}` and `mapfile`.
+required (enforced at the top of `linux/lib/common.sh`) because the code relies
+on `declare -gA`, `${var,,}` and `mapfile`.
+
+The tree is split by **host platform**: `linux/` holds the bash suite described
+below, and `windows/` holds per-device material for Windows hosts — currently
+`windows/mpd218/first_preset.mpd218`, the Akai MPD218 controller preset (pads
+1-16 on notes 36-51, MIDI channel 10). Everything in this file concerns
+`linux/` unless stated otherwise.
 
 ## Commands
 
 ```bash
-shellcheck -x -S style lib/*.sh kindle/*.sh   # lint; must stay clean at this level
-bash -n lib/common.sh                         # syntax-only check of one file
-./kindle/kindle-mount.sh -n                   # dry run: prints every command instead of running it
-DEVICES_DEBUG=1 ./kindle/kindle-mount.sh      # trace the commands actually executed
+shellcheck -x -S style linux/lib/*.sh linux/kindle/*.sh   # lint; must stay clean at this level
+bash -n linux/lib/common.sh                               # syntax-only check of one file
+./linux/kindle/kindle-mount.sh -n                         # dry run: prints every command instead of running it
+DEVICES_DEBUG=1 ./linux/kindle/kindle-mount.sh            # trace the commands actually executed
 ```
 
 `shellcheck -x` is required rather than plain `shellcheck`: the entry scripts
@@ -39,7 +45,7 @@ plugged in. Override the seam, and put stub `lsblk`, `udevadm`, `udisksctl`,
 
 ```bash
 PATH="$STUBS:$PATH" DEVICES_MOUNTS="$FIXTURE/mounts" \
-  KINDLE_SYSFS_USB="$FIXTURE/sysfs" ./kindle/kindle-unmount.sh -a -n
+  KINDLE_SYSFS_USB="$FIXTURE/sysfs" ./linux/kindle/kindle-unmount.sh -a -n
 ```
 
 Preserve these seams when touching detection code — hardcoding `/proc` or
@@ -49,14 +55,20 @@ Preserve these seams when touching detection code — hardcoding `/proc` or
 
 Three layers, each entry script being a thin argument parser over the libraries:
 
-- `lib/common.sh` — device-agnostic. Logging, the `DRY_RUN`/`QUIET` discipline,
-  privilege escalation, path normalisation, mount-table reading. Sourced first;
-  it guards against double-sourcing and defines the `EX_*` exit codes.
-- `lib/kindle.sh` — all Kindle knowledge, and the only place that knows about
-  udev properties, USB interface classes or MTP helpers. Pure detection: it
-  prints records and never mounts anything.
-- `kindle/kindle-mount.sh`, `kindle/kindle-unmount.sh` — option parsing, the
-  decision of which strategy to use, and the user-facing diagnostics.
+- `linux/lib/common.sh` — device-agnostic. Logging, the `DRY_RUN`/`QUIET`
+  discipline, privilege escalation, path normalisation, mount-table reading.
+  Sourced first; it guards against double-sourcing and defines the `EX_*` exit
+  codes.
+- `linux/lib/kindle.sh` — all Kindle knowledge, and the only place that knows
+  about udev properties, USB interface classes or MTP helpers. Pure detection:
+  it prints records and never mounts anything.
+- `linux/kindle/kindle-mount.sh`, `linux/kindle/kindle-unmount.sh` — option
+  parsing, the decision of which strategy to use, and the user-facing
+  diagnostics.
+
+`$ROOT_DIR` resolves to `linux/`, not the repository root, so the in-script
+`# shellcheck source=lib/...` directives stay relative to `linux/` and need no
+`linux/` prefix themselves.
 
 ### The record protocol
 
@@ -106,7 +118,11 @@ is what the diagnostics in `kindle-mount.sh` are built on.
 
 ### Adding another device
 
-Add `lib/<device>.sh` for detection following the record protocol, and
-`<device>/<device>-mount.sh` / `-unmount.sh` reusing `lib/common.sh`. Copy the
-`ROOT_DIR` resolution header verbatim — it resolves symlinks so the scripts work
-when linked onto `PATH`.
+Add `linux/lib/<device>.sh` for detection following the record protocol, and
+`linux/<device>/<device>-mount.sh` / `-unmount.sh` reusing
+`linux/lib/common.sh`. Copy the `ROOT_DIR` resolution header verbatim — it
+resolves symlinks so the scripts work when linked onto `PATH`, and it is what
+keeps the libraries reachable as `$ROOT_DIR/lib/...` from one level down.
+
+Entry scripts are committed mode `100755`; the libraries stay `100644` because
+they are sourced, not executed. Check with `git ls-files -s` after adding one.
