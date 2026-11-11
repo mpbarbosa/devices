@@ -28,11 +28,18 @@ stated otherwise.
 ## Commands
 
 ```bash
-shellcheck -x -S style linux/lib/*.sh linux/kindle/*.sh   # lint; must stay clean at this level
-bash -n linux/lib/common.sh                               # syntax-only check of one file
-./linux/kindle/kindle-mount.sh -n                         # dry run: prints every command instead of running it
-DEVICES_DEBUG=1 ./linux/kindle/kindle-mount.sh            # trace the commands actually executed
+cd linux && shellcheck -x -S style lib/*.sh kindle/*.sh mpd218/*.sh   # lint; must stay clean
+bash -n linux/lib/common.sh                       # syntax-only check of one file
+./linux/kindle/kindle-mount.sh -n                 # dry run: prints every command instead of running it
+DEVICES_DEBUG=1 ./linux/kindle/kindle-mount.sh    # trace the commands actually executed
 ```
+
+**Lint from inside `linux/`, not from the repository root.** shellcheck 0.11
+resolves a `# shellcheck source=lib/...` directive relative to its own working
+directory and does not honour `source-path=SCRIPTDIR/..` here, so running it
+from the root reports SC1091 on every entry script — and, because the library
+then goes unread, a spurious SC2034 for `QUIET`. Both vanish when the lint runs
+from `linux/`.
 
 `shellcheck -x` is required rather than plain `shellcheck`: the entry scripts
 source the libraries through `$ROOT_DIR`, which shellcheck can only follow
@@ -75,6 +82,11 @@ Three layers, each entry script being a thin argument parser over the libraries:
 - `linux/kindle/kindle-mount.sh`, `linux/kindle/kindle-unmount.sh` — option
   parsing, the decision of which strategy to use, and the user-facing
   diagnostics.
+- `linux/lib/mpd218.sh` — all MPD218 knowledge. Detects the device in two
+  namespaces: the raw ALSA port (`hw:1,0,0`, what `amidi` needs for sysex) and
+  the sequencer address (`20:0`, what `aconnect` needs). Pure detection.
+- `linux/mpd218/mpd218-config.sh`, `linux/mpd218/mpd218-synth.sh` — preset
+  transfer, and routing the controller into FluidSynth so it is audible.
 
 `$ROOT_DIR` resolves to `linux/`, not the repository root, so the in-script
 `# shellcheck source=lib/...` directives stay relative to `linux/` and need no
