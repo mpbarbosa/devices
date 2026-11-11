@@ -195,13 +195,39 @@ sudo apt install fluidsynth          # one-off; the GM SoundFont is already pres
 ./linux/mpd218/mpd218-synth.sh       # Ctrl-C to stop
 ```
 
-It runs in the foreground and prints what it chose:
+It runs in the foreground and prints what it chose, then hands over to
+FluidSynth's own command shell:
 
 ```
 device    20:0
 soundfont /usr/share/sounds/sf2/default-GM.sf2
-transpose 36 semitones
+transpose 0 semitones
+audio     pipewire
+connected 20:0 -> 128:0
+hit the pads. Ctrl-C to stop.
 ```
+
+Verified on this laptop: `pw-link -l` shows `FluidSynth:output_FL/FR` wired to
+`alsa_output...analog-stereo`, and drum hits sent into the synth with
+`aplaymidi` reach the speakers.
+
+FluidSynth 2.4.8 prints four `GLib-GObject-CRITICAL` assertion warnings at
+startup. They are harmless, and come from its own option handling.
+
+The audio driver is `pipewire` by default, with no probe and no fallback list.
+That is deliberate: there is no string that reliably means the driver opened.
+FluidSynth announces each one differently -- `Using PipeWire audio driver` but
+`Using PulseAudio driver` -- and the ALSA driver announces nothing at all while
+still working, so an earlier version of this script that guessed from those
+messages got it wrong in both directions. If there is no sound, pass
+`--audio pulseaudio` or `--audio alsa`; FluidSynth's own complaint is clearer
+than anything this script could infer.
+
+The synth is left in the foreground on purpose: given `-i` (no shell) and no
+MIDI file to play, FluidSynth has nothing to do and exits immediately, so its
+command shell is what keeps it alive. The ALSA connection is therefore made by
+a helper forked before the synth is `exec`'d, which waits for the synth's
+sequencer port to appear.
 
 Nothing is transposed by default, because **the MPD218 gives no way to ask
 which preset is selected** -- sysex index `0x00` is not "current preset" on this
