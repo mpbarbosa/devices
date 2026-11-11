@@ -169,6 +169,10 @@ drummer's hands expect it.
 ./linux/mpd218/mpd218-drums.sh play     # write it, then start the synth
 ```
 
+`apply` only puts the preset on the device. The MPD218 has no sound engine, so
+nothing is audible until a synth is listening -- which is the difference between
+`apply` and `play`, and the usual reason freshly applied pads are silent.
+
 Bank A is the kit, with the groove on the bottom row:
 
 ```
@@ -193,9 +197,13 @@ so any GM synth plays it as a kit with no program change. That also means
 The preset is generated rather than edited: `mpd218.py`'s pad editor is
 interactive, 48 pads of prompts, and this layout should be reproducible. The
 549-byte dump is emitted byte by byte, which is also why there is no
-`.mpd218` file for it in the repository -- the script is the source. Pad 1 is
-assumed to be bottom-left, counting up in rows, as on an MPC; the device cannot
-be asked. If the kit comes out upside down, that assumption is why:
+`.mpd218` file for it in the repository -- the script is the source.
+
+Pad 1 is bottom-left, counting up in rows, as on an MPC. The device cannot be
+asked which pad is which, so that began as an assumption; it is measured on
+this unit. Playing the pads under `aseqdump` returned all sixteen bank A notes
+exactly as laid out above, on channel 10. A unit that disagrees puts the kit
+upside down, which is the first thing to check:
 
 ```bash
 aseqdump -p "$(./linux/mpd218/mpd218-config.sh seq)"

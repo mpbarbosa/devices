@@ -32,9 +32,11 @@
 # Every byte must be <= 0x7F or it is not legal SysEx, which the whole GM
 # percussion range (35-81) satisfies comfortably.
 #
-# Pad 1 is taken to be bottom-left, counting up in rows, as on an MPC. The
-# device cannot be asked, so if the kit comes out upside down that assumption
-# is why; check it with:
+# Pad 1 is bottom-left, counting up in rows, as on an MPC. The device cannot be
+# asked which pad is which, so that began as an assumption; it is measured on
+# this unit. Playing the pads under aseqdump returned all sixteen bank A notes
+# exactly as laid out below, on channel 10. A unit that disagrees puts the kit
+# upside down, which is the first thing to check:
 #
 #   aseqdump -p "$(./mpd218-config.sh seq)"     # hit the bottom-left pad,
 #                                               # expect note 36 on channel 9
