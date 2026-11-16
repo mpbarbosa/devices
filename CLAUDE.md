@@ -116,6 +116,16 @@ Three layers, each entry script being a thin argument parser over the libraries:
 - `linux/printer/printer-find.sh` — the search, the identification and the
   diagnostics when nothing is found. Prints a CUPS device URI on stdout and
   never calls `lpadmin`, so adding a queue stays an explicit act.
+- `linux/printer/printer-print.sh` — submits a job through a queue CUPS
+  already has. The queue name is resolved rather than hardcoded (`--dest`,
+  `$PRINTER_DEST`, the CUPS default, the only queue, the only queue that is
+  taking jobs) because CUPS derives it from what the printer advertises and
+  it changes when the printer is renamed, re-added or moved between the
+  cable and the wifi. Prints job ids on stdout. A *disabled* queue holds the
+  job, so that warns; one that is *not accepting* rejects it, so that
+  refuses before submitting. Every `lpstat` read is wrapped in `LC_ALL=C`:
+  the rows it parses ("device for NAME: URI", "is idle", "not accepting")
+  are translated strings, and this host runs in pt_BR.
 - `linux/lib/mpd218.sh` — all MPD218 knowledge. Detects the device in two
   namespaces: the raw ALSA port (`hw:1,0,0`, what `amidi` needs for sysex) and
   the sequencer address (`20:0`, what `aconnect` needs). Pure detection.

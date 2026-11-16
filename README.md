@@ -17,6 +17,7 @@ linux/mpd218/mpd218-config.sh       read, edit and write MPD218 presets over Sys
 linux/mpd218/mpd218-synth.sh        route the MPD218 into FluidSynth so it is audible
 linux/mpd218/mpd218-drums.sh        put a classic drum kit on the pads, and play it
 linux/printer/printer-find.sh       find a printer on the cable or the wifi, print its CUPS URI
+linux/printer/printer-print.sh      send a file to the printer, titling the job after the file
 windows/mpd218/first_preset.mpd218  Akai MPD218 pad preset, a sysex dump
 windows/mpd218/midimon.ps1          print what a MIDI controller is actually sending
 windows/clock/fix-clock-utc.ps1     stop the clock booting three hours fast
@@ -364,6 +365,76 @@ Useful options:
 ./linux/printer/printer-find.sh -S 10.0.0.0/24   # sweep another subnet
 ./linux/printer/printer-find.sh -n               # print the scan plan, probe nothing
 ```
+
+### Printing a file
+
+```bash
+./linux/printer/printer-print.sh ~/Downloads/física.pdf
+```
+
+The long-hand form of the one-liner it replaces:
+
+```bash
+lp -d HP_Smart_Tank_510_series_6E0508_USB -t "física.pdf" ~/Downloads/física.pdf
+```
+
+Both submit the same job. The difference is that the script works out the
+two things the one-liner hardcodes: the destination comes from `lpstat`, and
+the title comes from the file's name.
+
+The queue name is worth asking for every time because it is not stable. CUPS
+derives it from what the printer advertises — model, serial, how it is
+attached — so it changes when the printer is renamed, moved from the cable to
+the wifi, or re-added, and the hardcoded line then fails with "The printer or
+class does not exist" while the printer sits there working.
+
+Which queue, when none is named: `--dest`, then `$PRINTER_DEST`, then the
+CUPS default, then the only queue — and, failing that, the only queue that is
+*taking jobs*. That last rule is what makes this host work unprompted: it has
+collected more than one queue for the one printer — the USB one, and a stale
+`ipps://` one left behind from the wifi that sits there disabled and refusing
+jobs.
+
+A default destination can outlive the queue it names, which is also this host's
+state: `lpstat -d` still points at a queue that has since been removed. A
+destination you *name* is honoured or refused, but an inferred one that no
+longer exists is reported and dropped rather than being allowed to veto a
+working printer.
+
+```
+printing to HP_Smart_Tank_510_series_6E0508_USB, the only queue of 2 that is taking jobs
+sent "física.pdf" to HP_Smart_Tank_510_series_6E0508_USB as job HP_Smart_Tank_510_series_6E0508_USB-42
+```
+
+A queue that is *disabled* still takes the job and holds it, which is a
+legitimate thing to want, so that only warns. A queue that is *not accepting*
+rejects it, so that refuses before anything is submitted. Nothing here
+configures anything: no queue is created, no default is set, no option is made
+permanent.
+
+stdout carries the job ids and nothing else, so a job can be followed or
+called off:
+
+```bash
+cancel "$(./linux/printer/printer-print.sh -q report.pdf)"
+```
+
+Useful options:
+
+```bash
+./linux/printer/printer-print.sh -L                      # what can I print to?
+./linux/printer/printer-print.sh -2 -m A4 report.pdf     # duplex, A4
+./linux/printer/printer-print.sh -d office -P 1-4 a.pdf  # pages 1-4 of a named queue
+./linux/printer/printer-print.sh -# 3 notes.pdf          # three copies
+./linux/printer/printer-print.sh -R label.prn            # raw, no filtering
+./linux/printer/printer-print.sh -n *.pdf                # print the lp commands, submit nothing
+pandoc notes.md -o - | ./linux/printer/printer-print.sh - # from a pipe
+```
+
+`-n` is `--dry-run`, as everywhere in this suite, and so is deliberately not
+`lp`'s number-of-copies flag; copies are `-#`, as in `lpr(1)`. Exit codes are
+the suite's: `2` bad usage, `3` no queue to print to, `1` the printing system
+refused the job.
 
 ### A cabled printer is a network printer
 

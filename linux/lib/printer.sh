@@ -444,7 +444,7 @@ printer_cups_queues() {
     while read -r _ _ name uri; do
         [[ -n ${uri:-} ]] || continue
         printf '%s\n' "${name%:}$DEVICES_FS$uri"
-    done < <(lpstat -v 2>/dev/null)
+    done < <(LC_ALL=C lpstat -v 2>/dev/null)
 }
 
 # The queue name CUPS derives from a printer's advertised name: every run
@@ -457,6 +457,59 @@ printer_cups_name() {
     slug=${slug%_}
     [[ -n $slug ]] || return 1
     printf '%s' "$slug"
+}
+
+# True when cupsd is answering at all. "No queue" and "no scheduler" look
+# identical from lpstat -v, which prints nothing in either case, and only
+# the second one is cured by starting a service.
+printer_cups_running() {
+    local line
+    have lpstat || return 1
+    line=$(LC_ALL=C lpstat -r 2>/dev/null) || return 1
+    [[ $line == *"is running"* ]]
+}
+
+# The queue CUPS prints to when none is named, if the host has one.
+#
+# lpstat -d says "system default destination: NAME" or "no system default
+# destination", and a host can perfectly well have queues and no default -
+# this one does - so a failure here means "none set", not "none exist".
+printer_cups_default() {
+    local line name
+    have lpstat || return 1
+    line=$(LC_ALL=C lpstat -d 2>/dev/null) || return 1
+    [[ $line == *": "* ]] || return 1
+    name=${line##*": "}
+    name=${name%"${name##*[![:space:]]}"}
+    [[ -n $name ]] || return 1
+    printf '%s' "$name"
+}
+
+# What one queue is doing:  state<FS>accepting<FS>description
+#
+# Two questions, two commands, because the answers are independent and
+# only one of them loses a job. lpstat -p says idle, printing or disabled;
+# lpstat -a says whether new jobs are taken at all. A *disabled* queue
+# still accepts jobs and holds them until it is enabled, whereas one that
+# is not accepting rejects them outright - so a caller can warn about the
+# first and must refuse the second.
+#
+# Returns 1 when the queue does not exist, which is how an out-of-date
+# queue name is told apart from a printer that is merely idle.
+printer_queue_state() {
+    local name=$1 out desc='' state='' accepting=true
+    have lpstat || return 1
+    out=$(LC_ALL=C lpstat -p "$name" 2>/dev/null) || return 1
+    desc=${out%%$'\n'*}
+    [[ -n $desc ]] || return 1
+    if [[ $desc =~ is[[:space:]]+([a-z]+) ]]; then
+        state=${BASH_REMATCH[1]}
+    elif [[ $desc == *disabled* ]]; then
+        state=disabled
+    fi
+    out=$(LC_ALL=C lpstat -a "$name" 2>/dev/null) || out=''
+    [[ $out == *"not accepting"* ]] && accepting=false
+    printf '%s\n' "${state:-unknown}$DEVICES_FS$accepting$DEVICES_FS$desc"
 }
 
 # How many addresses answered recently, from the neighbour table. Says
