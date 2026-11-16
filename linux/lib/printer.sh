@@ -353,16 +353,26 @@ printer_oui_vendor() {
 # product name on every model since about 2010, which is the most precise
 # identification available without SNMP; the <title> of the landing page is
 # the fallback, and is what non-HP printers answer with.
+#
+# Two details this printer taught us. The model lives in ProductName on
+# some LEDM families and in MakeAndModel on others - a Smart Tank 510
+# has only the second - so both are read before falling back. And curl
+# must ask for --compressed: an HP embedded web server gzips its root
+# page whether or not the client offered to accept it, so without it the
+# regex is matched against a gzip blob, which never matches and makes
+# bash warn about the null bytes it drops on the way out of $(...).
 printer_http_identity() {
-    local ip=$1 scheme body
+    local ip=$1 scheme body elem
     have curl || return 1
     for scheme in http https; do
-        body=$(curl -sk -m "$PRINTER_PROBE_TIMEOUT" "$scheme://$ip/DevMgmt/ProductConfigDyn.xml" 2>/dev/null) || body=''
-        if [[ $body =~ \<[a-zA-Z:]*ProductName\>([^\<]+)\< ]]; then
-            printf '%s' "${BASH_REMATCH[1]}"
-            return 0
-        fi
-        body=$(curl -sk -m "$PRINTER_PROBE_TIMEOUT" "$scheme://$ip/" 2>/dev/null) || body=''
+        body=$(curl -sk --compressed -m "$PRINTER_PROBE_TIMEOUT" "$scheme://$ip/DevMgmt/ProductConfigDyn.xml" 2>/dev/null) || body=''
+        for elem in ProductName MakeAndModel; do
+            if [[ $body =~ \<[a-zA-Z:]*$elem\>([^\<]+)\< ]]; then
+                printf '%s' "${BASH_REMATCH[1]}"
+                return 0
+            fi
+        done
+        body=$(curl -sk --compressed -m "$PRINTER_PROBE_TIMEOUT" "$scheme://$ip/" 2>/dev/null) || body=''
         if [[ $body =~ \<[Tt][Ii][Tt][Ll][Ee]\>([^\<]+) ]]; then
             body=${BASH_REMATCH[1]}
             body=${body//$'\n'/ }
