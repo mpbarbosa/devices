@@ -10,11 +10,13 @@ The tree is split by host platform, not by device:
 linux/lib/common.sh                 logging, dry-run, privilege escalation, mount-table helpers
 linux/lib/kindle.sh                 Kindle detection (USB mass storage and MTP)
 linux/lib/mpd218.sh                 AKAI MPD218 detection (ALSA MIDI port, USB presence)
+linux/lib/printer.sh                printer detection (USB bus, mDNS, port sweep, IPP, OUI)
 linux/kindle/kindle-mount.sh        mount a Kindle, print its mountpoint
 linux/kindle/kindle-unmount.sh      flush and unmount a Kindle, optionally power it off
 linux/mpd218/mpd218-config.sh       read, edit and write MPD218 presets over SysEx
 linux/mpd218/mpd218-synth.sh        route the MPD218 into FluidSynth so it is audible
 linux/mpd218/mpd218-drums.sh        put a classic drum kit on the pads, and play it
+linux/printer/printer-find.sh       find a printer on the cable or the wifi, print its CUPS URI
 windows/mpd218/first_preset.mpd218  Akai MPD218 pad preset, a sysex dump
 windows/mpd218/midimon.ps1          print what a MIDI controller is actually sending
 windows/clock/fix-clock-utc.ps1     stop the clock booting three hours fast
@@ -323,6 +325,88 @@ To see whether the hardware is sending anything at all, independent of audio:
 ```bash
 aseqdump -p "$(./linux/mpd218/mpd218-config.sh -q seq)"   # Ctrl-C to stop
 ```
+
+## Printers (Linux)
+
+```bash
+./linux/printer/printer-find.sh          # the cable, then the wifi
+```
+
+It looks on the USB bus first, then over mDNS, and only sweeps the subnet
+when neither found anything. On success the CUPS device URI goes to stdout
+and the report to stderr, so it composes:
+
+```bash
+lpadmin -p office -E -v "$(./linux/printer/printer-find.sh -q)" -m everywhere
+```
+
+Nothing is configured for you: the script never calls `lpadmin`, so adding a
+queue stays something you asked for. A typical report:
+
+```
+HP Smart Tank 510 series
+  attached   USB 03f0:1954, serial BR17E4F195
+  interfaces printer class, IPP-over-USB, bidirectional
+  published  127.0.0.1:60000 by ipp-usb, as "HP Smart Tank 510 series"
+  found by   usb 3-4, mdns _uscan._tcp, mdns _ipp._tcp
+  state      idle, accepting jobs
+  ink        cyan 100%  magenta 100%  yellow 100%
+  cups       queue HP_Smart_Tank_510_series_6E0508_USB is already configured
+```
+
+Useful options:
+
+```bash
+./linux/printer/printer-find.sh -U               # is it on the cable?
+./linux/printer/printer-find.sh -a               # any make, not just HP
+./linux/printer/printer-find.sh -w 120           # plug it in or wake it, then wait
+./linux/printer/printer-find.sh -s               # sweep even if mDNS answered
+./linux/printer/printer-find.sh -S 10.0.0.0/24   # sweep another subnet
+./linux/printer/printer-find.sh -n               # print the scan plan, probe nothing
+```
+
+### A cabled printer is a network printer
+
+USB printer-class protocol `04` is IPP-over-USB, and `ipp-usb` republishes
+such a printer as an IPP service on loopback — advertised over mDNS, with
+the USB serial in its TXT record. So the same unit shows up on the bus and
+at `127.0.0.1`, and the `usb_SER` key is what proves they are one printer;
+it is reported once, with the IPP URI preferred over `usb://` because IPP is
+driverless and reports state and ink levels back.
+
+That is also why plugging a modern HP in needs no driver and no setup:
+`cups-browsed` sees the advert and creates the queue by itself. Which is
+what happened here — `lpstat -v` had no destinations before the cable went
+in and an `implicitclass://` queue a moment after.
+
+### If nothing is found
+
+The script says what it *did* see rather than only that it failed: whether
+anything on the bus claims the printer class, whether `avahi-daemon` is
+running at all (an empty browse otherwise means nothing), how many addresses
+answered recently, and anything that responded on a printer port without
+looking like a printer. Then the five causes that look identical from the
+host, in the order worth checking: a charge-only USB cable, a printer asleep
+off-network, the wrong SSID, the guest network, and client isolation on the
+router.
+
+### Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| 0 | at least one printer found |
+| 1 | failure |
+| 2 | bad usage |
+| 3 | no printer found |
+
+### Environment
+
+`PRINTER_SUBNET`, `PRINTER_PORTS`, `PRINTER_MDNS_TYPES`,
+`PRINTER_NAME_PATTERN`, `PRINTER_SCAN_MAX_HOSTS`, `PRINTER_JOBS`,
+`PRINTER_PROBE_TIMEOUT`, `PRINTER_SYSFS_USB`, `PRINTER_OUI_FILE`.
+`avahi-utils`, `curl`, `ipptool` and `ieee-data` are all used when present
+and never required — without `avahi-utils` the mDNS path is skipped and the
+sweep does the work; without `ipptool` the state and ink lines are omitted.
 
 ## Windows
 
