@@ -29,7 +29,7 @@ stated otherwise.
 ## Commands
 
 ```bash
-cd linux && shellcheck -x -S style lib/*.sh kindle/*.sh mpd218/*.sh printer/*.sh   # lint; must stay clean
+cd linux && shellcheck -x -S style lib/*.sh kindle/*.sh mpd218/*.sh printer/*.sh camera/*.sh   # lint; must stay clean
 bash -n linux/lib/common.sh                       # syntax-only check of one file
 ./linux/kindle/kindle-mount.sh -n                 # dry run: prints every command instead of running it
 DEVICES_DEBUG=1 ./linux/kindle/kindle-mount.sh    # trace the commands actually executed
@@ -66,6 +66,9 @@ plugged in. Override the seam, and put stub `lsblk`, `udevadm`, `udisksctl`,
 | `PRINTER_SUBNET` | the block swept, instead of asking `ip route` |
 | `PRINTER_OUI_FILE` | the IEEE OUI database read for vendor names |
 | `PRINTER_SCAN_MAX_HOSTS` | the refusal threshold for a sweep |
+| `CAMERA_SYSFS_V4L` | `/sys/class/video4linux` |
+| `CAMERA_DEV_DIR` | `/dev`, where the `video*` nodes are looked for |
+| `CAMERA_APPS`, `CAMERA_APP_ID` | the binaries tried, and the flatpak id |
 
 ```bash
 PATH="$STUBS:$PATH" DEVICES_MOUNTS="$FIXTURE/mounts" \
@@ -126,6 +129,23 @@ Three layers, each entry script being a thin argument parser over the libraries:
   refuses before submitting. Every `lpstat` read is wrapped in `LC_ALL=C`:
   the rows it parses ("device for NAME: URI", "is idle", "not accepting")
   are translated strings, and this host runs in pt_BR.
+- `linux/lib/camera.sh` — all webcam knowledge, and the only place that knows
+  about V4L2 capture capabilities, UVC metadata nodes or pixel formats. Pure
+  detection: it prints records and never opens the camera.
+- `linux/camera/camera-open.sh` — opens GNOME Camera, after checking there is
+  a camera for it to show. The app takes no device argument (it gets its list
+  from PipeWire through the `org.freedesktop.portal.Camera` portal), so the
+  script cannot aim it at a node; what it does instead is tell the failures
+  apart — app missing, no graphical session, no capture node, node not
+  readable by this user, portal absent — and print the app's pid on stdout.
+  Detached by default, since closing the terminal should not take the window
+  with it; `--wait` keeps it in the foreground.
+- `linux/camera/camera-record.sh` — records straight to a file with ffmpeg,
+  bypassing the GUI, so it works over ssh with no desktop. Resolves the node
+  rather than hardcoding `/dev/video0` (see below), refuses to overwrite an
+  existing recording without `--force` because a take is not reproducible,
+  and prints the path written on stdout. `--duration` bounds the recording;
+  without it, it runs until stopped.
 - `linux/lib/mpd218.sh` — all MPD218 knowledge. Detects the device in two
   namespaces: the raw ALSA port (`hw:1,0,0`, what `amidi` needs for sysex) and
   the sequencer address (`20:0`, what `aconnect` needs). Pure detection.
@@ -199,6 +219,61 @@ Two details that only live hardware reveals, both already handled:
   browsed for, not the one avahi printed. And `ipp-usb` advertises
   `_printer._tcp` on **port 0**, meaning "this exists but do not print to
   it here"; those records are dropped.
+
+### One webcam, four device nodes, and only one of them is the camera
+
+The fact that makes camera detection worth a library at all. Measured on the
+internal Integrated Webcam FHD (vendor `0bda`, product `5586` — one serial
+across all four nodes):
+
+| node | `ID_V4L_CAPABILITIES` | formats | what it is |
+| --- | --- | --- | --- |
+| `/dev/video0` | `:capture:` | MJPG, YUYV | the camera |
+| `/dev/video1` | `:` | none | UVC metadata |
+| `/dev/video2` | `:capture:` | GREY only | infrared sensor |
+| `/dev/video3` | `:` | none | UVC metadata |
+
+Two separate traps live in that table, and both have bitten this code:
+
+- **The metadata nodes do not capture.** UVC registers a second node per
+  stream for per-frame metadata; opening it yields no image. udev labels
+  them — `ID_V4L_CAPABILITIES` is `:capture:` for a real capture node and a
+  bare `:` for metadata — which is what `camera_capture_nodes` filters on.
+  The numbering interleaves, so "the lowest `/dev/video*`" is right here only
+  by luck and `video1` is wrong on every such webcam.
+- **The infrared sensor is a capture node too**, correctly so, and *no udev
+  property tells it from the colour camera*. It is the face-recognition
+  camera, it offers `GREY` and nothing else, and software that opens it shows
+  a dim grey picture indistinguishable from broken hardware. The two differ
+  only in the pixel formats they enumerate, which takes a `VIDIOC_ENUM_FMT`
+  ioctl bash cannot make. So `camera_node_kind` asks `v4l2-ctl` (package
+  `v4l-utils`) when it is installed and reports `colour` or `ir`; without it,
+  it falls back on USB interface order within one serial (`:1.0` before
+  `:1.2`) and reports `unknown` rather than claiming a reading it did not
+  take. Callers can therefore tell a measurement from an inference.
+
+Preference across the three kinds is `colour`, then `unknown`, then `ir`, and
+it **cannot** be a sort on the kind field: `ir` sorts before `unknown`
+alphabetically, which once put the infrared sensor at the head of
+`camera-open.sh --list` and so at the head of the ffmpeg pipeline its own help
+recommends. `ranked_capture_nodes` makes the rank explicit for that reason.
+
+Two further facts measured on this host, both of which `camera-record.sh`
+depends on:
+
+- **ffmpeg exits 255 when a capture is interrupted, and the file is fine.**
+  SIGINT finalises the output properly — a run cut off at 0.6s produced valid,
+  playable H.264 — but under `set -e` that non-zero status aborts the script
+  before it can report, so an ordinary Ctrl-C looks like a failure. 255 and
+  130 are therefore treated as a normal stop when no `--duration` was given.
+  Beware measuring this through a pipeline: `tail`'s status reads 0 and
+  `timeout`'s reads 124, so it takes `timeout --preserve-status` or a direct
+  signal to see ffmpeg's own code.
+- **GNOME Camera being open does not hold `/dev/video0`.** It streams through
+  PipeWire, so `fuser` reports no holder and a concurrent ffmpeg capture
+  succeeds — verified with both running at once. The `EX_BUSY` check in
+  `camera-record.sh` therefore fires only for a genuine second reader of the
+  node, not for the GUI.
 
 ### Conventions that cross files
 
