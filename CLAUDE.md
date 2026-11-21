@@ -29,7 +29,7 @@ stated otherwise.
 ## Commands
 
 ```bash
-cd linux && shellcheck -x -S style lib/*.sh kindle/*.sh mpd218/*.sh printer/*.sh   # lint; must stay clean
+cd linux && shellcheck -x -S style lib/*.sh kindle/*.sh mpd218/*.sh printer/*.sh audio/*.sh   # lint; must stay clean
 bash -n linux/lib/common.sh                       # syntax-only check of one file
 ./linux/kindle/kindle-mount.sh -n                 # dry run: prints every command instead of running it
 DEVICES_DEBUG=1 ./linux/kindle/kindle-mount.sh    # trace the commands actually executed
@@ -66,6 +66,10 @@ plugged in. Override the seam, and put stub `lsblk`, `udevadm`, `udisksctl`,
 | `PRINTER_SUBNET` | the block swept, instead of asking `ip route` |
 | `PRINTER_OUI_FILE` | the IEEE OUI database read for vendor names |
 | `PRINTER_SCAN_MAX_HOSTS` | the refusal threshold for a sweep |
+| `AUDIO_PROC_ASOUND` | `/proc/asound`, whose `pcm` lists the capture devices |
+| `AUDIO_PULSE_SOCKET` | the PulseAudio socket whose clients are counted |
+| `AUDIO_PULSE_SERVERS` | the sound-server process names looked for |
+| `AUDIO_SERVICE_ARG` | the whole argument that marks a browser audio service |
 
 ```bash
 PATH="$STUBS:$PATH" DEVICES_MOUNTS="$FIXTURE/mounts" \
@@ -116,6 +120,15 @@ Three layers, each entry script being a thin argument parser over the libraries:
 - `linux/printer/printer-find.sh` — the search, the identification and the
   diagnostics when nothing is found. Prints a CUPS device URI on stdout and
   never calls `lpadmin`, so adding a queue stays an explicit act.
+- `linux/lib/audio.sh` — all microphone and sound-server knowledge, and the
+  only place that knows about `/proc/asound/pcm`, `wpctl` output or Chromium
+  audio services. Pure detection: it never changes a volume, a default
+  device or a process.
+- `linux/audio/mic-check.sh` — walks the path a browser's microphone request
+  takes and says where it breaks. `--fix` stops a stale browser audio
+  service and does nothing else; volumes and defaults are reported with the
+  `wpctl` command that would change them, never changed. Prints the default
+  source's node name on stdout.
 - `linux/lib/mpd218.sh` — all MPD218 knowledge. Detects the device in two
   namespaces: the raw ALSA port (`hw:1,0,0`, what `amidi` needs for sysex) and
   the sequencer address (`20:0`, what `aconnect` needs). Pure detection.
@@ -189,6 +202,52 @@ Two details that only live hardware reveals, both already handled:
   browsed for, not the one avahi printed. And `ipp-usb` advertises
   `_printer._tcp` on **port 0**, meaning "this exists but do not print to
   it here"; those records are dropped.
+
+### A browser that sees no microphone on a host that has one
+
+Chromium — and so Chrome, the Chromium snap and every Electron app — keeps
+its sound-server connection in a separate utility process, launched with
+`--type=utility --utility-sub-type=audio.mojom.AudioService`. When
+`pipewire-pulse` restarts, that process can be left with no connection, and
+every page in the browser then gets `NotFoundError`, "Requested device not
+found", while every other program on the host records. The browser never
+recovers on its own, and `enumerateDevices()` lists no audio input *and no
+audio output* — the second is the giveaway, since a missing microphone alone
+would leave the loudspeakers listed.
+
+Measured on this host, which is what `audio_service_connected` rests on: a
+healthy audio service holds one connection to the PulseAudio socket from the
+moment it starts, whether or not a page is using sound; the broken one held
+none, and had started eight minutes before `pipewire-pulse` last restarted.
+So "no connection" is the evidence and "started before the restart" is the
+explanation. Without `ss` only the second can be read, and the script says
+which one it used.
+
+Finding the connection takes two passes over `ss -xpH`: the server side of
+each connection is the line whose local address is the socket path, and its
+*peer* inode (field 8) is the *local* inode (field 6) of the client's line,
+which is the one carrying the client's pid.
+
+**The marker is matched as a whole argument, never as a substring.** `pgrep
+-f` matches anywhere in the joined command line, so a shell whose script
+merely mentions the marker — a terminal that just ran the `pkill -f` from the
+README, or the shell running a test of this script — matches too. The first
+version filtered on substrings, and its `--fix` killed the shell running its
+own test. `audio_services` therefore reads `/proc/PID/cmdline` field by field
+(`read -d ''`, not `mapfile -d ''`, which needs bash 4.4) and requires
+`--type=utility` and the marker as two arguments of their own; a `-c` script
+is one argument and never qualifies. To exercise `--fix` without touching a
+real browser, give the fake service its own marker:
+
+```bash
+AUDIO_SERVICE_ARG=--utility-sub-type=mic-check-test
+python3 -c 'import time; time.sleep(60)' --type=utility "$AUDIO_SERVICE_ARG" &
+AUDIO_SERVICE_ARG=$AUDIO_SERVICE_ARG ./linux/audio/mic-check.sh --fix
+```
+
+A fresh `python3` holds no PulseAudio connection, so it is reported stale and
+stopped; a stub `ps` that answers a large `etimes` for its pid exercises the
+"started before the restart" line.
 
 ### Conventions that cross files
 

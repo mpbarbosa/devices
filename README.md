@@ -8,6 +8,7 @@ The tree is split by host platform, not by device:
 
 ```
 linux/lib/common.sh                 logging, dry-run, privilege escalation, mount-table helpers
+linux/lib/audio.sh                  microphone detection (ALSA capture, PipeWire, browser audio services)
 linux/lib/kindle.sh                 Kindle detection (USB mass storage and MTP)
 linux/lib/mpd218.sh                 AKAI MPD218 detection (ALSA MIDI port, USB presence)
 linux/lib/printer.sh                printer detection (USB bus, mDNS, port sweep, IPP, OUI)
@@ -17,6 +18,7 @@ linux/mpd218/mpd218-config.sh       read, edit and write MPD218 presets over Sys
 linux/mpd218/mpd218-synth.sh        route the MPD218 into FluidSynth so it is audible
 linux/mpd218/mpd218-drums.sh        put a classic drum kit on the pads, and play it
 linux/printer/printer-find.sh       find a printer on the cable or the wifi, print its CUPS URI
+linux/audio/mic-check.sh            say why a browser cannot hear the microphone, and fix it
 windows/mpd218/first_preset.mpd218  Akai MPD218 pad preset, a sysex dump
 windows/mpd218/midimon.ps1          print what a MIDI controller is actually sending
 windows/clock/fix-clock-utc.ps1     stop the clock booting three hours fast
@@ -407,6 +409,82 @@ router.
 `avahi-utils`, `curl`, `ipptool` and `ieee-data` are all used when present
 and never required — without `avahi-utils` the mDNS path is skipped and the
 sweep does the work; without `ipptool` the state and ink lines are omitted.
+
+## Microphone (Linux)
+
+```bash
+./linux/audio/mic-check.sh          # what is wrong, if anything
+./linux/audio/mic-check.sh --fix    # and repair a stale browser audio service
+```
+
+It checks the path a browser's microphone request takes, bottom up: a
+capture device the kernel exposes, the PulseAudio-protocol server
+(`pipewire-pulse`), a default source that is neither muted nor too quiet,
+and each browser audio service still connected to that server. On success
+the default source's name goes to stdout. A healthy report:
+
+```
+capture    ALC3204 Analog (pcm 00-00)
+server     pipewire-pulse, pid 70410, up 1d 08h
+source     Built-in Audio Analog Stereo, volume 0.80
+browser    claude-desktop audio service, pid 1146207, up 3h 08m: connected
+browser    chrome audio service, pid 1407801, up 2m 32s: connected
+```
+
+### "Requested device not found" with a working microphone
+
+The fault this script was written for. Chrome, Chromium and every Electron
+app keep their sound-server connection in a separate *audio service*
+process. When `pipewire-pulse` restarts, that process can be left holding
+nothing, and from then on every page in that browser sees no microphone and
+no loudspeaker: `getUserMedia` fails with `NotFoundError`, "Requested device
+not found", while every other program records fine. The browser does not
+recover by itself and shows no sign of why.
+
+Measured on this laptop (Latitude 5450): Chrome's audio service had started
+at 15:24, `pipewire-pulse` restarted at 15:32, and more than a day later the
+service still held no connection to `/run/user/1000/pulse/native` — with the
+site's microphone permission granted and the built-in microphone recording
+in every other program.
+
+`--fix` stops only that process. The browser starts a fresh, connected one
+the next time a page asks for sound, so the tabs stay open; reload the page
+that failed. By hand, the same thing is:
+
+```bash
+pkill -f 'chrome.*utility-sub-type=audio.mojom.AudioService'
+```
+
+Volumes and default devices are reported, never changed. The two that
+mattered here:
+
+```bash
+wpctl set-volume @DEFAULT_AUDIO_SOURCE@ 0.8   # it was at 0.35, low for speech recognition
+wpctl status                                  # which source and sink are the defaults
+```
+
+This laptop's built-in microphone is the Realtek ALC3204's analog "Internal
+Mic", so it works under `snd_hda_intel`; it is not a digital array that would
+need the SOF driver. And with an external monitor on HDMI the only sink
+listed is the monitor's, so sound goes there and not to the laptop speakers.
+
+### Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| 0 | the path is whole (warnings, such as a quiet source, do not change this) |
+| 1 | a fault was found and not fixed: no sound server, a muted source, a stale audio service |
+| 2 | bad usage |
+| 3 | no capture device, or no default source |
+
+### Environment
+
+`AUDIO_MIN_VOLUME` (default `0.5`) is the level below which the source is
+called too quiet. `AUDIO_PROC_ASOUND`, `AUDIO_PULSE_SOCKET`,
+`AUDIO_PULSE_SERVERS` and `AUDIO_SERVICE_ARG` exist for testing. `wpctl`
+(wireplumber) and `ss` (iproute2) are used when present and never required —
+without `ss` a service's connection cannot be checked, and only one that
+started before the sound server's last restart is flagged.
 
 ## Windows
 
